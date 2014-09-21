@@ -1,0 +1,161 @@
+---
+title: "Fuel efficiency and transmission systems"
+author: "LFR"
+date: "Sunday, September 21, 2014"
+output: pdf_document
+
+---
+#Executive summary
+This paper addresses the determinants of the miles per gallon (*mpg*) of passenger cars, using the `mtcars' dataset.
+We show that the transmission system is highly significant when considered in isolation, but that the move from an automatic to a manual transmission system is not significant when the vehicle's weight is taken into account. The highest fuel economy is obtained with a 4 gear automatic system. 
+The full code of this document can be found at https://github.com/LaurentFranckx/CourseraRegressionProject. 
+
+#Introduction
+
+
+
+```{r, echo=FALSE}
+library(datasets)
+library(ggplot2)
+library(grid)
+data(mtcars)
+# mtcars$gear <- as.factor(mtcars$gear)
+# mtcars$am <- as.factor(mtcars$am)
+mtcars$trans <- with(mtcars, interaction(gear,am))
+```
+
+This paper addresses the determinants of the miles per gallon (*mpg*) of passenger cars, using the `mtcars' dataset.
+This datasets consists of `r nrow(mtcars)` observations of passenger cars - see *help(mtcars)* for a definition of the variables. 
+
+#Model choice
+
+The fundamental question here is how the transmission type *am* affects *mpg*.  As the figure "mpg versus gear and am" in Appendix suggests, the impact of *am* on *mpg* is likely to be affected by *gear* as well. The transmission type also imposes constraints on the number of forward gears, *gears*: cars with an automatic (manual) transmission system have at the most (resp. at the minimum) 4 gears. We therefore  create a new factor variable, *trans*, which represents the interaction between *am* and *gears*. Starting with the simplest specification that expresses *mpg* as a function of the transmission system  yields the following estimates (coefficients can only be estimated for the *am*-*gear* combinations that are actually observed): 
+
+```{r, echo=FALSE}
+#fit_gear <- lm(mpg  ~ am + gear, data =  mtcars )
+fit_gear <- lm(mpg  ~ trans, data =  mtcars )
+coef(fit_gear)
+```
+
+This first model yields an R squared value of `r round(summary(fit_gear)$r.squared,2)` and an adjusted R squared of `r round(summary(fit_gear)$adj.r.squared,2)`. While encouraging, this suggests that adding other explanatory variables is worthwhile exploring.
+
+```{r, echo=FALSE}
+cont_var <- c("mpg", "disp", "hp", "drat", "wt", "qsec")
+cor_mat <- cor(as.matrix(mtcars[, cont_var]))
+#cor_mat
+hp_explain <- lm(hp ~ wt + qsec , data =  mtcars   )
+disp_explain <- lm(disp ~ wt + qsec , data =  mtcars   )
+fit_wt_gear <- update(fit_gear, .  ~ . + I(wt -mean(wt)) + I((wt -mean(wt))^2)  )
+fitaltter <- update(fit_gear, .  ~ . + I(wt -mean(wt)) + I((wt -mean(wt))^2)  + drat + qsec * vs ) 
+```
+
+The graph "Plotting the continuous variables" in Appendix suggests that several continuous variables are good candidates for explaining *mpg*, but also that there is a high level of multicollinearity between these continuous variables. It can be verified that, using a linear model,  `r round(summary(hp_explain)$r.squared,2)` % of the variation in *hp* can be explained by the variation in *wt* and *qsec*. Similarly,
+`r round(summary(disp_explain)$r.squared,2)` % of the variation in *disp* can be explained by the variation in *wt* and *qsec*.
+
+The graph "Plotting the continuous variables" suggests that *mpg* is a convex quadratic function of weight: *mpg* decreases when weight increases, but at a decreasing rate. We have therefore added a quadratic function of *wt* (centered around its mean value) to the previous specification: 
+
+```{r, echo=FALSE}
+fit_wt_gear$call
+```
+
+This second model yields an R squared value of `r round(summary(fit_wt_gear)$r.squared,2)` and an adjusted R squared of `r round(summary(fit_wt_gear)$adj.r.squared,2)`. The ANOVA tables confirms that adding these two terms is statistically significant. It can be verified that adding *qsec* and *vs* as explanatory variables does not lead to a statistically significant improvement. 
+
+
+
+```{r, echo=FALSE}
+#summary(fit_wt_gear)
+anova(fit_wt_gear,fit_gear)
+fitaltter <- update(fit_wt_gear, .  ~ .  + qsec * vs )
+#anova(fitaltter,fit_wt_gear)
+```
+
+
+Let us now have a closer look at the preferred model:
+
+
+```{r, echo=FALSE}
+summary(fit_wt_gear)$coefficients
+```
+
+In this model specification, the expected fuel efficiency for  a vehicle with average weight and an automatic transmission and three forward gears is `r round(coef(fit_wt_gear)[[1]],2)` *mpg*. For a car of any given weight with an automatic transmission system, when moving from 3 to 4 forward gears, the expected gain in fuel efficiency is 
+ `r round(coef(fit_wt_gear)[[2]],2)` *mpg*. Moving from a 3 gear automatic system to a 4 gear manual system also yields a gain (of `r round(coef(fit_wt_gear)[[3]],2)` *mpg*), but a move from a 4 gear automatic system to a 4 gear manual system results in a reduction in fuel efficiency of `r round(coef(fit_wt_gear)[[3]],2)` - `r round(coef(fit_wt_gear)[[2]],2)`  = `r round(coef(fit_wt_gear)[[3]] -  coef(fit_wt_gear)[[2]],2) `  *mpg*. 
+Finally,  a move from a 4 gear manual system to a 5 gear manual system results in a decrease in fuel efficiency of `r round(coef(fit_wt_gear)[[4]],2)` -`r round(coef(fit_wt_gear)[[3]],2)` = `r round( coef(fit_wt_gear)[[4]] - coef(fit_wt_gear)[[3]],2)` *mpg*.
+Thus, the highest fuel economy is obtained with a 4 gear automatic system. Note however that the coefficients for *trans4.1* and *trans5.1* are not significant, while the coefficient for *trans4.0* is only significant at the 0.1 level. 
+
+The coefficients for *wt* confirm that *mpg* is a quadratic, convex function of *wt - mean(wt)*, all other things being equal. 
+Because of the quadratic term, the loss in fuel efficiency when weight increases depends on the reference point. 
+
+#Diagnostics
+
+The 'Residuals vs Fitted' and the 'Scale Location' plots in Appendix suggests that the assumptions of linearity and equal variance of the error term are reasonable, but also that there are some outliers (Fiat 128, Pontiac Firebird and Toyota Corolla). From the 'Normal Q-Q' plot in Appendix, we can infer that the observed residuals follow closely the theoretical quantiles of a normal distribution, except for the aforementioned outliers. 
+
+The 'Cook's distance' plot in Appendix points to the following influential observations: Fiat 128, Pontiac Firebird and Toyota Corolla, while influence.measures() identifies the following: 
+
+```{r, echo=FALSE}
+influence_mat <- influence.measures(fit_wt_gear)
+influ_obs <- rownames(mtcars)[influence_mat[[2]][ ,"cov.r"]]
+influ_obs
+```
+
+
+
+#Appendix
+
+
+```{r, echo=FALSE, fig.height= 4, fig.width=4}
+#dev.new(width = 6, length = 6)
+pairs(mtcars[, cont_var], main =  "Plotting the continuous variables", panel = panel.smooth)
+#dev.off()
+```
+
+```{r, echo=FALSE, fig.height= 5, fig.width=5}
+
+# grid.newpage()
+# pushViewport(viewport(layout = grid.layout(1, 3)))
+# vplayout <- function(x, y)
+# viewport(layout.pos.row = x, layout.pos.col = y)
+# a <- ggplot(mtcars, aes(x =mpg)) + geom_histogram( binwidth = 3, fill = "steelblue") 
+# b <- ggplot(mtcars, aes(x =wt)) + geom_histogram( binwidth = 0.2, fill = "red")
+# c <- ggplot(mtcars, aes(x =qsec)) + geom_histogram( binwidth = 3, fill = "green")
+# 
+# 
+# print(a, vp = vplayout(1, 1))
+# print(b, vp = vplayout(1,2))
+# print(c, vp = vplayout(1,3))
+
+```{r, echo=FALSE, fig.height= 4, fig.width=4}
+qplot(as.factor(gear), mpg,data = mtcars, facets =  am  ~ ., geom = "boxplot", main = "mpg versus gear and am")
+#qplot(as.factor(am), mpg,data = mtcars, facets =  gear  ~ ., geom = "boxplot", main = "mpg versus gear and am")
+```
+
+
+```{r, echo=FALSE, fig.height= 4, fig.width=4}
+#qplot(wt, mpg, data = mtcars, facets =  cyl  ~ ., geom = c("point","smooth"), method = "lm")
+#qplot(wt, mpg, data = mtcars, facets =  am  ~ ., geom = c("point","smooth"), method = "lm")
+#par(mfrow = c(2,2))
+
+plot(fit_wt_gear,which=1)
+```
+
+
+```{r, echo=FALSE, fig.height= 4, fig.width=4}
+plot(fit_wt_gear,which=2)
+```
+
+```{r, echo=FALSE, fig.height= 4, fig.width=4}
+plot(fit_wt_gear,which=3)
+```
+
+```{r, echo=FALSE, fig.height= 4, fig.width=4}
+plot(fit_wt_gear,which=4)
+```
+
+
+
+
+
+
+
+
+
+
